@@ -24,10 +24,8 @@ public class OAuth2FailureHandler implements ServerAuthenticationFailureHandler 
     @Override
     public Mono<Void> onAuthenticationFailure(WebFilterExchange webFilterExchange, AuthenticationException exception) {
         log.warn("OAuth2 authentication failed", exception);
-        webFilterExchange.getExchange().getResponse().getHeaders()
-                .setLocation(URI.create(frontendBaseUrl + "/?auth=error"));
-        webFilterExchange.getExchange().getResponse()
-                .setStatusCode(org.springframework.http.HttpStatus.FOUND);
+        webFilterExchange.getExchange().getResponse().getHeaders().setLocation(URI.create(frontendBaseUrl + "/?auth=error"));
+        webFilterExchange.getExchange().getResponse().setStatusCode(org.springframework.http.HttpStatus.FOUND);
         return webFilterExchange.getExchange().getResponse().setComplete();
     }
 }
