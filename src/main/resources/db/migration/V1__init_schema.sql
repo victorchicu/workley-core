@@ -5,7 +5,7 @@ CREATE TABLE users
 (
     id            UUID PRIMARY KEY      DEFAULT gen_random_uuid(),
     email         VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255),
     status        VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
@@ -108,3 +108,20 @@ CREATE TABLE user_profiles
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+
+CREATE TABLE user_linked_providers
+(
+    id           BIGSERIAL PRIMARY KEY,
+    user_id      UUID         NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    provider     VARCHAR(20)  NOT NULL,
+    subject      VARCHAR(255) NOT NULL,
+    email        VARCHAR(255),
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    UNIQUE (provider, subject)
+);
+
+CREATE INDEX idx_user_linked_providers_user_id ON user_linked_providers (user_id);
+
+-- Seed local provider entries for existing email+password users
+INSERT INTO user_linked_providers (user_id, provider, subject, email)
+SELECT id, 'local', id::text, email FROM users;

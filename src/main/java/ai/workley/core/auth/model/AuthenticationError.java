@@ -80,6 +80,11 @@ public class AuthenticationError extends RuntimeException {
         return new AuthenticationError("profile_already_completed", "Profile already completed", HttpStatus.CONFLICT);
     }
 
+    public static AuthenticationError noPasswordSet() {
+        return new AuthenticationError("no_password_set",
+                "No password set. Please log in with Google or set a password.", HttpStatus.UNAUTHORIZED);
+    }
+
     public static AuthenticationError onboardingIncomplete(String nextStep) {
         return new AuthenticationError("onboarding_incomplete", nextStep, HttpStatus.FORBIDDEN);
     }

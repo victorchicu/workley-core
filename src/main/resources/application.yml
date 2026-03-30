@@ -40,10 +40,6 @@ spring:
         options:
           model: text-embedding-3-small
           dimensions: 1536 #or 3072 for text-embedding-3-large
-  rsocket:
-    server:
-      transport: websocket
-      mapping-path: /rsocket
   r2dbc:
     url: ${SPRING_R2DBC_URL}
     username: ${SPRING_R2DBC_USERNAME}
@@ -53,6 +49,18 @@ spring:
     user: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
     locations: classpath:/db/migration
+  rsocket:
+    server:
+      transport: websocket
+      mapping-path: /rsocket
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:placeholder}
+            client-secret: ${GOOGLE_CLIENT_SECRET:placeholder}
+            scope: openid, email, profile
   datasource:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -61,6 +69,8 @@ spring:
   application:
     name: workley-core
 gateway:
+  frontend:
+    base-url: ${GATEWAY_FRONTEND_BASE_URL}
   otp:
     expiry: 5m
     max-attempts: 5

@@ -4,9 +4,12 @@ import ai.workley.core.chat.TestRunner;
 import ai.workley.core.auth.model.AuthenticationRequest.*;
 import ai.workley.core.auth.model.AuthenticationResponse.*;
 import ai.workley.core.auth.service.SendGridEmailService;
+import ai.workley.core.auth.service.SocialLoginService;
+import ai.workley.core.auth.service.SocialLoginService.SocialLoginResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseCookie;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -27,6 +30,9 @@ public class AuthenticationControllerIT extends TestRunner {
 
     @MockitoBean
     private SendGridEmailService sendGridEmailService;
+
+    @Autowired
+    private SocialLoginService socialLoginService;
 
     private final ArgumentCaptor<String> otpCodeCaptor = ArgumentCaptor.forClass(String.class);
 
@@ -249,5 +255,45 @@ public class AuthenticationControllerIT extends TestRunner {
                 .expectStatus().isOk()
                 .expectCookie().maxAge("accessToken", java.time.Duration.ZERO)
                 .expectCookie().maxAge("refreshToken", java.time.Duration.ZERO);
+    }
+
+    @Test
+    void loginWithNoPassword_shouldReturnNoPasswordSet() {
+        socialLoginService.authenticate(
+                "google", "google-no-pass", "no-pass@example.com", true, "No Pass User").block();
+
+        webTestClient.post().uri(AUTH_URL + "/login")
+                .bodyValue(new LoginRequest("no-pass@example.com", "anypassword"))
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                .jsonPath("$.error").isEqualTo("no_password_set");
+    }
+
+    @Test
+    void mergedUser_canStillLoginWithPassword() {
+        String email = "can-still-login@example.com";
+
+        StepResponse registerResp = webTestClient.post().uri(AUTH_URL + "/register")
+                .bodyValue(new RegisterRequest(email, "password123", "password123"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(StepResponse.class)
+                .returnResult().getResponseBody();
+
+        String otp = getLastCapturedOtp();
+        webTestClient.post().uri(AUTH_URL + "/verify-otp")
+                .bodyValue(new VerifyOtpRequest(registerResp.preAuthToken(), otp))
+                .exchange()
+                .expectStatus().isOk();
+
+        SocialLoginResult mergeResult = socialLoginService.authenticate(
+                "google", "google-merge-login", email, true, "Merged User").block();
+        assertNotNull(mergeResult);
+
+        webTestClient.post().uri(AUTH_URL + "/login")
+                .bodyValue(new LoginRequest(email, "password123"))
+                .exchange()
+                .expectStatus().isOk();
     }
 }

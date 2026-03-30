@@ -109,6 +109,10 @@ public class AuthenticationService {
                 });
     }
 
+    public Mono<Void> issueTokens(UUID userId, String email, ServerHttpResponse response) {
+        return issueAccessToken(userId, email, response).then();
+    }
+
     public Mono<String> tryRefreshAccessToken(String accessTokenValue, String refreshTokenValue, ServerHttpResponse response) {
         if (refreshTokenValue == null) return Mono.empty();
         String tokenHash = hashToken(refreshTokenValue);
@@ -178,6 +182,9 @@ public class AuthenticationService {
         return userRepository.findByEmail(normalized)
                 .switchIfEmpty(Mono.error(AuthenticationError.userNotFound()))
                 .flatMap(user -> {
+                    if (user.getPasswordHash() == null) {
+                        return Mono.error(AuthenticationError.noPasswordSet());
+                    }
                     if (!passwordEncoder.matches(password, user.getPasswordHash())) {
                         return Mono.error(AuthenticationError.invalidCredentials());
                     }
@@ -185,7 +192,6 @@ public class AuthenticationService {
                         return issueTokens(user.getId(), user.getEmail(), response)
                                 .thenReturn((AuthenticationResponse) new StepResponse("authenticated", null));
                     }
-                    // CREATED user — check which onboarding step is needed
                     return onboardingService.findIncompleteSteps(user.getId())
                             .next()
                             .flatMap(step -> {
@@ -198,7 +204,6 @@ public class AuthenticationService {
                                                     .thenReturn((AuthenticationResponse) new StepResponse("verify_otp",
                                                             createPreAuthToken(user.getId(), user.getEmail()))));
                                 }
-                                // Other incomplete steps (e.g. PERSONAL_INFORMATION) — issue tokens + return step
                                 return issueTokens(user.getId(), user.getEmail(), response)
                                         .thenReturn((AuthenticationResponse) new StepResponse(
                                                 step.getStepName(), null));
@@ -235,10 +240,6 @@ public class AuthenticationService {
                 .withClaim("stage", "pre_auth")
                 .withExpiresAt(Instant.now().plus(PRE_AUTH_TOKEN_EXPIRY))
                 .sign(jwtSecret.getAlgorithm());
-    }
-
-    private Mono<Void> issueTokens(UUID userId, String email, ServerHttpResponse response) {
-        return issueAccessToken(userId, email, response).then();
     }
 
     private Mono<Void> checkOtpRateLimit(String email) {

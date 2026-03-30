@@ -130,9 +130,17 @@ public class AuthenticationController {
             return Mono.error(AuthenticationError.underage());
         }
         UUID userId = UUID.fromString(principal.userId());
-        return userProfileRepository.existsByUserId(userId)
-                .flatMap(exists -> {
-                    if (exists) return Mono.<UserProfileEntity>error(AuthenticationError.profileAlreadyCompleted());
+        return userProfileRepository.findByUserId(userId)
+                .flatMap(existing -> {
+                    if (existing.getAge() > 0) {
+                        return Mono.<UserProfileEntity>error(AuthenticationError.profileAlreadyCompleted());
+                    }
+                    existing.setFullName(request.fullName().trim());
+                    existing.setAge(request.age());
+                    existing.setUpdatedAt(Instant.now());
+                    return userProfileRepository.save(existing);
+                })
+                .switchIfEmpty(Mono.defer(() -> {
                     UserProfileEntity profile = new UserProfileEntity()
                             .setUserId(userId)
                             .setFullName(request.fullName().trim())
@@ -140,7 +148,7 @@ public class AuthenticationController {
                             .setCreatedAt(Instant.now())
                             .setUpdatedAt(Instant.now());
                     return userProfileRepository.save(profile);
-                })
+                }))
                 .then(onboardingService.markStepCompleted(userId, OnboardingStepType.PERSONAL_INFORMATION))
                 .then(onboardingService.isFullyOnboarded(userId))
                 .flatMap(fullyOnboarded -> {
