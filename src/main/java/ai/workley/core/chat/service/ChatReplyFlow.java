@@ -1,5 +1,6 @@
 package ai.workley.core.chat.service;
 
+import ai.workley.core.chat.model.AttachmentContent;
 import ai.workley.core.chat.model.ReplyException;
 import ai.workley.core.chat.model.Message;
 import ai.workley.core.chat.model.Role;
@@ -7,6 +8,7 @@ import ai.workley.core.chat.model.Content;
 import ai.workley.core.chat.model.ReplyChunk;
 import ai.workley.core.chat.model.ReplyError;
 import ai.workley.core.chat.model.ReplyCompletedContent;
+import ai.workley.core.chat.repository.R2dbcAttachmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -15,7 +17,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -28,6 +32,7 @@ public class ChatReplyFlow {
     private final PromptBuilder promptBuilder;
     private final ReplyAggregator replyAggregator;
     private final ChatChunkEmitter chatChunkEmitter;
+    private final R2dbcAttachmentRepository attachmentRepository;
 
     public ChatReplyFlow(
             AiModel aiModel,
@@ -35,7 +40,8 @@ public class ChatReplyFlow {
             ChunkDecoder chunkDecoder,
             PromptBuilder promptBuilder,
             ReplyAggregator replyAggregator,
-            ChatChunkEmitter chatChunkEmitter
+            ChatChunkEmitter chatChunkEmitter,
+            R2dbcAttachmentRepository attachmentRepository
     ) {
         this.aiModel = aiModel;
         this.chatSession = chatSession;
@@ -43,12 +49,44 @@ public class ChatReplyFlow {
         this.promptBuilder = promptBuilder;
         this.replyAggregator = replyAggregator;
         this.chatChunkEmitter = chatChunkEmitter;
+        this.attachmentRepository = attachmentRepository;
     }
 
     public Mono<Void> generate(String actor, String chatId, Message<? extends Content> message) {
         return chatSession.loadRecentHistory(chatId, 100)
                 .collectList()
-                .flatMap(history -> streamReply(actor, chatId, message, history));
+                .flatMap(history -> enrichWithAttachmentText(history)
+                        .flatMap(enriched -> streamReply(actor, chatId, message, enriched)));
+    }
+
+    private Mono<List<Message<? extends Content>>> enrichWithAttachmentText(List<Message<? extends Content>> history) {
+        List<Message<? extends Content>> enriched = new ArrayList<>(history);
+        return Flux.fromIterable(history)
+                .filter(m -> m.content() instanceof AttachmentContent)
+                .flatMap(m -> {
+                    AttachmentContent att = (AttachmentContent) m.content();
+                    return attachmentRepository.findById(UUID.fromString(att.attachmentId()))
+                            .map(entity -> Map.entry(m, entity));
+                })
+                .collectList()
+                .map(entries -> {
+                    for (var entry : entries) {
+                        Message<? extends Content> original = entry.getKey();
+                        String extractedText = entry.getValue().getExtractedText();
+                        if (extractedText != null && !extractedText.isBlank()) {
+                            int idx = enriched.indexOf(original);
+                            if (idx >= 0) {
+                                AttachmentContent att = (AttachmentContent) original.content();
+                                String contextText = "User uploaded a file: " + att.filename() + "\n\nFile content:\n" + extractedText;
+                                Message<ReplyChunk> contextMessage = Message.create(
+                                        original.id(), original.chatId(), original.ownedBy(),
+                                        original.role(), original.createdAt(), new ReplyChunk(contextText));
+                                enriched.set(idx, contextMessage);
+                            }
+                        }
+                    }
+                    return enriched;
+                });
     }
 
     private Mono<Void> streamReply(String actor, String chatId, Message<? extends Content> message,

@@ -68,6 +68,20 @@ spring:
     driver-class-name: org.postgresql.Driver
   application:
     name: workley-core
+  scheduling:
+    enabled: true
+storage:
+  s3:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: ${MINIO_BUCKET:workley-attachments}
+    region: us-east-1
+attachment:
+  max-file-size: 10485760
+  allowed-mime-types: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document
+  orphan-ttl-minutes: 30
+  extracted-text-max-length: 50000
 gateway:
   frontend:
     base-url: ${GATEWAY_FRONTEND_BASE_URL}

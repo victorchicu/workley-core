@@ -122,6 +122,21 @@ CREATE TABLE user_linked_providers
 
 CREATE INDEX idx_user_linked_providers_user_id ON user_linked_providers (user_id);
 
+CREATE TABLE attachments
+(
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    storage_key    VARCHAR(512) NOT NULL,
+    filename       VARCHAR(255) NOT NULL,
+    mime_type      VARCHAR(128) NOT NULL,
+    file_size      BIGINT       NOT NULL,
+    extracted_text TEXT,
+    uploaded_by    UUID         NOT NULL,
+    expires_at     TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_attachments_orphan_cleanup ON attachments (expires_at) WHERE expires_at IS NOT NULL;
+
 -- Seed local provider entries for existing email+password users
 INSERT INTO user_linked_providers (user_id, provider, subject, email)
 SELECT id, 'local', id::text, email FROM users;

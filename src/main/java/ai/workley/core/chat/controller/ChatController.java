@@ -25,10 +25,10 @@ public class ChatController {
         this.chatService = chatService;
     }
 
-    public record CreateChatRequest(String prompt) {
+    public record CreateChatRequest(String prompt, String attachmentId) {
     }
 
-    public record AddMessageRequest(String text) {
+    public record AddMessageRequest(String text, String attachmentId) {
     }
 
     @GetMapping("/{chatId}")
@@ -49,7 +49,7 @@ public class ChatController {
     public Mono<ResponseEntity<Payload>> createChat(Principal principal, @RequestBody CreateChatRequest request) {
         return Mono.deferContextual(contextView -> {
             log.info("Create chat (principal={})", principal.getName());
-            return chatService.createChat(principal.getName(), request.prompt())
+            return chatService.createChat(principal.getName(), request.prompt(), request.attachmentId())
                     .map(payload -> ResponseEntity.ok()
                             .contentType(MediaType.APPLICATION_JSON)
                             .body((Payload) payload))
@@ -65,7 +65,7 @@ public class ChatController {
     public Mono<ResponseEntity<Payload>> addMessage(Principal principal, @PathVariable String chatId, @RequestBody AddMessageRequest request) {
         return Mono.deferContextual(contextView -> {
             log.info("Add message (principal={}, chatId={})", principal.getName(), chatId);
-            return chatService.addMessage(principal.getName(), chatId, request.text())
+            return chatService.addMessage(principal.getName(), chatId, request.text(), request.attachmentId())
                     .map(payload -> ResponseEntity.ok()
                             .contentType(MediaType.APPLICATION_JSON)
                             .body((Payload) payload))

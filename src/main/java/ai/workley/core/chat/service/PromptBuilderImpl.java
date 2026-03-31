@@ -1,5 +1,6 @@
 package ai.workley.core.chat.service;
 
+import ai.workley.core.chat.model.AttachmentContent;
 import ai.workley.core.chat.model.Message;
 import ai.workley.core.chat.model.Content;
 import ai.workley.core.chat.model.ReplyChunk;
@@ -44,6 +45,9 @@ public class PromptBuilderImpl implements PromptBuilder {
     private <T extends Content> @NonNull String extractText(Message<T> prompt) {
         if (prompt.content() instanceof ReplyChunk(String value)) {
             return value;
+        }
+        if (prompt.content() instanceof AttachmentContent) {
+            return "";
         }
         throw new UnsupportedOperationException("Unsupported content type: " + prompt.content().getClass());
     }

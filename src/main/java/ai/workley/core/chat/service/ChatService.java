@@ -4,6 +4,7 @@ import ai.workley.core.chat.model.Chat;
 import ai.workley.core.chat.model.Message;
 import ai.workley.core.chat.model.Role;
 import ai.workley.core.chat.model.ReplyChunk;
+import ai.workley.core.chat.model.AttachmentContent;
 import ai.workley.core.chat.model.CreateChatPayload;
 import ai.workley.core.chat.model.AddMessagePayload;
 import ai.workley.core.chat.model.GetChatPayload;
@@ -31,19 +32,22 @@ public class ChatService {
     private final IdGenerator idGenerator;
     private final TransactionalOperator transactionalOperator;
     private final IdempotencyGuard idempotencyGuard;
+    private final AttachmentService attachmentService;
 
     public ChatService(
             ChatSession chatSession,
             ChatReplyFlow chatReplyFlow,
             IdGenerator idGenerator,
             TransactionalOperator transactionalOperator,
-            IdempotencyGuard idempotencyGuard
+            IdempotencyGuard idempotencyGuard,
+            AttachmentService attachmentService
     ) {
         this.chatSession = chatSession;
         this.chatReplyFlow = chatReplyFlow;
         this.idGenerator = idGenerator;
         this.transactionalOperator = transactionalOperator;
         this.idempotencyGuard = idempotencyGuard;
+        this.attachmentService = attachmentService;
     }
 
     public Mono<GetChatPayload> getChat(String actor, String chatId) {
@@ -56,7 +60,7 @@ public class ChatService {
                 );
     }
 
-    public Mono<CreateChatPayload> createChat(String userId, String prompt) {
+    public Mono<CreateChatPayload> createChat(String userId, String prompt, String attachmentId) {
         return Mono.deferContextual(contextView -> {
             String idempotencyKey = IdempotencyKeyContext.get(contextView);
             Mono<CreateChatPayload> operation = Mono.defer(() -> {
@@ -66,16 +70,20 @@ public class ChatService {
                 Chat chat = Chat.create(chatId, Chat.Summary.create(prompt), Set.of(Chat.Participant.create(userId)));
                 Message<ReplyChunk> message = Message.create(messageId, chatId, userId, Role.ANONYMOUS, Instant.now(), new ReplyChunk(prompt));
 
-                return transactionalOperator.transactional(
+                Mono<Void> saveAndLink = transactionalOperator.transactional(
                         chatSession.saveChat(chat)
+                                .then(saveAttachmentMessage(attachmentId, messageId, chatId, userId))
                                 .then(chatSession.addMessage(message))
-                                .thenReturn(CreateChatPayload.response(chatId, message))
-                ).doOnSuccess(payload -> {
-                    chatReplyFlow.generate(userId, chatId, message)
-                            .subscribeOn(Schedulers.boundedElastic())
-                            .doOnError(error -> log.error("Reply generation failed (chatId={})", chatId, error))
-                            .subscribe();
-                });
+                                .then()
+                );
+
+                return saveAndLink.thenReturn(CreateChatPayload.response(chatId, message))
+                        .doOnSuccess(payload -> {
+                            chatReplyFlow.generate(userId, chatId, message)
+                                    .subscribeOn(Schedulers.boundedElastic())
+                                    .doOnError(error -> log.error("Reply generation failed (chatId={})", chatId, error))
+                                    .subscribe();
+                        });
             });
             return withIdempotency(idempotencyKey, operation);
         }).onErrorMap(error -> {
@@ -85,7 +93,7 @@ public class ChatService {
         });
     }
 
-    public Mono<AddMessagePayload> addMessage(String userId, String chatId, String text) {
+    public Mono<AddMessagePayload> addMessage(String userId, String chatId, String text, String attachmentId) {
         return Mono.deferContextual(contextView -> {
             String idempotencyKey = IdempotencyKeyContext.get(contextView);
             Mono<AddMessagePayload> operation =
@@ -96,7 +104,8 @@ public class ChatService {
                                 Message.create(
                                         messageId, chatId, userId, Role.ANONYMOUS, Instant.now(), new ReplyChunk(text));
 
-                        return chatSession.addMessage(message)
+                        return saveAttachmentMessage(attachmentId, messageId, chatId, userId)
+                                .then(chatSession.addMessage(message))
                                 .thenReturn(AddMessagePayload.ack(chatId, message));
                     }).doOnSuccess(payload -> {
                         chatReplyFlow.generate(userId, chatId, payload.message())
@@ -111,6 +120,29 @@ public class ChatService {
             log.error("Could not add message (chatId={})", chatId, error);
             return new ApplicationError("Oops! Something went wrong. Please try again.");
         });
+    }
+
+    private Mono<Void> saveAttachmentMessage(String attachmentId, String messageId, String chatId, String userId) {
+        if (attachmentId == null || attachmentId.isBlank()) {
+            return Mono.empty();
+        }
+        UUID attId = UUID.fromString(attachmentId);
+        UUID uid = UUID.fromString(userId);
+        return attachmentService.getById(attId)
+                .flatMap(entity -> {
+                    AttachmentContent content = new AttachmentContent(
+                            entity.getId().toString(),
+                            entity.getFilename(),
+                            entity.getMimeType(),
+                            entity.getFileSize()
+                    );
+                    Message<AttachmentContent> attachmentMessage = Message.create(
+                            messageId + "-att", chatId, userId, Role.ANONYMOUS, Instant.now(), content
+                    );
+                    return chatSession.addMessage(attachmentMessage)
+                            .then(attachmentService.link(attId, uid))
+                            .then();
+                });
     }
 
     @SuppressWarnings("unchecked")
