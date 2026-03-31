@@ -8,9 +8,9 @@ import reactor.core.publisher.Flux;
 @Repository
 public interface R2dbcMessageRepository extends ReactiveCrudRepository<MessageEntity, Long> {
 
-    @Query("SELECT * FROM message_history WHERE chat_id = :chatId LIMIT :limit")
+    @Query("SELECT * FROM chat_messages WHERE chat_id = :chatId LIMIT :limit")
     Flux<MessageEntity> findAllByChatId(String chatId, int limit);
 
-    @Query("SELECT * FROM message_history WHERE chat_id = :chatId ORDER BY created_at ASC LIMIT :limit")
+    @Query("SELECT * FROM chat_messages WHERE chat_id = :chatId ORDER BY created_at ASC LIMIT :limit")
     Flux<MessageEntity> findAllByChatIdOrderByCreatedAtAsc(String chatId, int limit);
 }

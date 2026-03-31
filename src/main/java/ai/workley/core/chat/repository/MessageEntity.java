@@ -9,7 +9,7 @@ import io.r2dbc.postgresql.codec.Json;
 
 import java.time.Instant;
 
-@Table("message_history")
+@Table("chat_messages")
 public class MessageEntity {
     @Id
     private Long id;

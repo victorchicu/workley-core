@@ -9,7 +9,7 @@ import reactor.core.publisher.Mono;
 public interface R2dbcChatRepository extends ReactiveCrudRepository<ChatEntity, Long> {
 
     @Query("""
-            SELECT cs.* FROM chat_sessions cs
+            SELECT cs.* FROM chats cs
             JOIN chat_participants cp ON cs.chat_id = cp.chat_id
             WHERE cs.chat_id = :chatId AND cp.participant_id = ANY(:participantIds)
             GROUP BY cs.id

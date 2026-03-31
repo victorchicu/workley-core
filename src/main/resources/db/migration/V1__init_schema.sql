@@ -21,7 +21,7 @@ CREATE TABLE embeddings
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE TABLE chat_sessions
+CREATE TABLE chats
 (
     id         BIGSERIAL PRIMARY KEY,
     chat_id    VARCHAR(100) NOT NULL UNIQUE,
@@ -32,12 +32,12 @@ CREATE TABLE chat_sessions
 CREATE TABLE chat_participants
 (
     id             BIGSERIAL PRIMARY KEY,
-    chat_id        VARCHAR(100) NOT NULL REFERENCES chat_sessions (chat_id),
+    chat_id        VARCHAR(100) NOT NULL REFERENCES chats (chat_id),
     participant_id VARCHAR(100) NOT NULL,
     UNIQUE (chat_id, participant_id)
 );
 
-CREATE TABLE message_history
+CREATE TABLE chat_messages
 (
     id         BIGSERIAL PRIMARY KEY,
     message_id VARCHAR(100) NOT NULL UNIQUE,

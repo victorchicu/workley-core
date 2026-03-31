@@ -27,27 +27,27 @@ import java.util.UUID;
 public class ChatService {
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
 
+    private final IdGenerator idGenerator;
     private final ChatSession chatSession;
     private final ChatReplyFlow chatReplyFlow;
-    private final IdGenerator idGenerator;
-    private final TransactionalOperator transactionalOperator;
     private final IdempotencyGuard idempotencyGuard;
     private final AttachmentService attachmentService;
+    private final TransactionalOperator transactionalOperator;
 
     public ChatService(
+            IdGenerator idGenerator,
             ChatSession chatSession,
             ChatReplyFlow chatReplyFlow,
-            IdGenerator idGenerator,
-            TransactionalOperator transactionalOperator,
             IdempotencyGuard idempotencyGuard,
-            AttachmentService attachmentService
+            AttachmentService attachmentService,
+            TransactionalOperator transactionalOperator
     ) {
+        this.idGenerator = idGenerator;
         this.chatSession = chatSession;
         this.chatReplyFlow = chatReplyFlow;
-        this.idGenerator = idGenerator;
-        this.transactionalOperator = transactionalOperator;
         this.idempotencyGuard = idempotencyGuard;
         this.attachmentService = attachmentService;
+        this.transactionalOperator = transactionalOperator;
     }
 
     public Mono<GetChatPayload> getChat(String actor, String chatId) {
