@@ -34,9 +34,9 @@ spring:
       chat:
         options:
           model: gpt-5.4-mini # https://developers.openai.com/api/docs/pricing
-          max-tokens: 16384
           temperature: 0.2
           stream-usage: true
+          max-completion-tokens: 16384
       embedding:
         options:
           model: text-embedding-3-small
