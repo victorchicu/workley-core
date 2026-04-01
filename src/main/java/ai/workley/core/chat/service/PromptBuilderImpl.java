@@ -26,7 +26,7 @@ public class PromptBuilderImpl implements PromptBuilder {
         for (Message<? extends Content> message : history) {
             String text = extractText(message);
             switch (message.role()) {
-                case ANONYMOUS, CUSTOMER -> list.add(new UserMessage(text));
+                case ANONYMOUS, USER -> list.add(new UserMessage(text));
                 case ASSISTANT -> list.add(new AssistantMessage(text));
                 default -> log.warn("Ignoring role in history: {}", message.role());
             }

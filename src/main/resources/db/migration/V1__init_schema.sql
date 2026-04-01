@@ -137,6 +137,21 @@ CREATE TABLE attachments
 
 CREATE INDEX idx_attachments_orphan_cleanup ON attachments (expires_at) WHERE expires_at IS NOT NULL;
 
+CREATE TABLE token_usage
+(
+    id                BIGSERIAL PRIMARY KEY,
+    chat_id           VARCHAR(100) NOT NULL,
+    message_id        VARCHAR(100) NOT NULL,
+    model             VARCHAR(100) NOT NULL,
+    prompt_tokens     INTEGER      NOT NULL DEFAULT 0,
+    completion_tokens INTEGER      NOT NULL DEFAULT 0,
+    total_tokens      INTEGER      NOT NULL DEFAULT 0,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_token_usage_chat_id ON token_usage (chat_id);
+CREATE INDEX idx_token_usage_message_id ON token_usage (message_id);
+
 -- Seed local provider entries for existing email+password users
 INSERT INTO user_linked_providers (user_id, provider, subject, email)
 SELECT id, 'local', id::text, email FROM users;

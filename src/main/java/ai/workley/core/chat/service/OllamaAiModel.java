@@ -4,15 +4,18 @@ import ai.workley.core.chat.model.ErrorReply;
 import ai.workley.core.chat.model.ErrorCode;
 import ai.workley.core.chat.model.ReplyEvent;
 import ai.workley.core.chat.model.ChunkReply;
+import ai.workley.core.chat.model.TokenUsage;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AbstractMessage;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.cloud.circuitbreaker.resilience4j.ReactiveResilience4JCircuitBreakerFactory;
 import org.springframework.cloud.client.circuitbreaker.ReactiveCircuitBreaker;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -21,10 +24,12 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Component
 public class OllamaAiModel implements AiModel {
+    private static final Logger log = LoggerFactory.getLogger(OllamaAiModel.class);
 
     private final OllamaChatModel ollamaChatModel;
     private final ReactiveCircuitBreaker reactiveCircuitBreaker;
@@ -93,8 +98,21 @@ public class OllamaAiModel implements AiModel {
     }
 
     private Flux<ReplyEvent> internalStream(Prompt prompt) {
-        return ollamaChatModel.stream(prompt)
+        AtomicReference<Usage> lastUsage = new AtomicReference<>();
+        String model = prompt.getOptions() != null && prompt.getOptions().getModel() != null
+                ? prompt.getOptions().getModel()
+                : ollamaChatModel.getDefaultOptions().getModel();
+
+        Flux<ReplyEvent> textChunks = ollamaChatModel.stream(prompt)
                 .timeout(Duration.ofSeconds(30))
+                .doOnNext(chatResponse -> {
+                    if (chatResponse != null && chatResponse.getMetadata() != null && chatResponse.getMetadata().getUsage() != null) {
+                        Usage usage = chatResponse.getMetadata().getUsage();
+                        if (usage.getTotalTokens() > 0) {
+                            lastUsage.set(usage);
+                        }
+                    }
+                })
                 .flatMapIterable(chatResponse -> {
                     List<Generation> generations =
                             chatResponse != null
@@ -107,5 +125,25 @@ public class OllamaAiModel implements AiModel {
                 .map(Generation::getOutput)
                 .mapNotNull(AbstractMessage::getText)
                 .map(ChunkReply::new);
+
+        if (model == null) {
+            log.warn("Model name not available in prompt options, token usage will not be tracked");
+            return textChunks;
+        }
+
+        return Flux.concat(textChunks, Mono.fromSupplier(() -> {
+            Usage usage = lastUsage.get();
+            if (usage != null) {
+                return new TokenUsage(model,
+                        intValue(usage.getPromptTokens()),
+                        intValue(usage.getCompletionTokens()),
+                        intValue(usage.getTotalTokens()));
+            }
+            return new TokenUsage(model, 0, 0, 0);
+        }));
+    }
+
+    private static int intValue(Integer value) {
+        return value != null ? value : 0;
     }
 }

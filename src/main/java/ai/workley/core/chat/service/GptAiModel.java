@@ -4,8 +4,12 @@ import ai.workley.core.chat.model.ErrorReply;
 import ai.workley.core.chat.model.ErrorCode;
 import ai.workley.core.chat.model.ReplyEvent;
 import ai.workley.core.chat.model.ChunkReply;
+import ai.workley.core.chat.model.TokenUsage;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AbstractMessage;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -20,10 +24,12 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Primary
 @Component
 public class GptAiModel implements AiModel {
+    private static final Logger log = LoggerFactory.getLogger(GptAiModel.class);
 
     private final OpenAiChatModel openAiChatModel;
     private final ReactiveCircuitBreaker reactiveCircuitBreaker;
@@ -67,8 +73,21 @@ public class GptAiModel implements AiModel {
     }
 
     private Flux<ReplyEvent> internalStream(Prompt prompt) {
-        return openAiChatModel.stream(prompt)
+        AtomicReference<Usage> lastUsage = new AtomicReference<>();
+        String model = prompt.getOptions() != null && prompt.getOptions().getModel() != null
+                ? prompt.getOptions().getModel()
+                : openAiChatModel.getDefaultOptions().getModel();
+
+        Flux<ReplyEvent> textChunks = openAiChatModel.stream(prompt)
                 .timeout(Duration.ofSeconds(120))
+                .doOnNext(resp -> {
+                    if (resp != null && resp.getMetadata().getUsage() != null) {
+                        Usage usage = resp.getMetadata().getUsage();
+                        if (usage.getTotalTokens() > 0) {
+                            lastUsage.set(usage);
+                        }
+                    }
+                })
                 .flatMapIterable(resp -> {
                     List<Generation> gens = resp != null
                             ? resp.getResults()
@@ -78,5 +97,25 @@ public class GptAiModel implements AiModel {
                 .map(Generation::getOutput)
                 .mapNotNull(AbstractMessage::getText)
                 .map(ChunkReply::new);
+
+        if (model == null) {
+            log.warn("Model name not available in prompt options, token usage will not be tracked");
+            return textChunks;
+        }
+
+        return Flux.concat(textChunks, Mono.fromSupplier(() -> {
+            Usage usage = lastUsage.get();
+            if (usage != null) {
+                return new TokenUsage(model,
+                        intValue(usage.getPromptTokens()),
+                        intValue(usage.getCompletionTokens()),
+                        intValue(usage.getTotalTokens()));
+            }
+            return new TokenUsage(model, 0, 0, 0);
+        }));
+    }
+
+    private static int intValue(Integer value) {
+        return value != null ? value : 0;
     }
 }

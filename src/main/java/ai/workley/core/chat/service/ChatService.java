@@ -60,7 +60,7 @@ public class ChatService {
                 );
     }
 
-    public Mono<CreateChatPayload> createChat(String userId, String prompt, String attachmentId) {
+    public Mono<CreateChatPayload> createChat(String userId, Role role, String prompt, String attachmentId) {
         return Mono.deferContextual(contextView -> {
             String idempotencyKey = IdempotencyKeyContext.get(contextView);
             Mono<CreateChatPayload> operation = Mono.defer(() -> {
@@ -68,11 +68,11 @@ public class ChatService {
                 String messageId = UUID.randomUUID().toString();
 
                 Chat chat = Chat.create(chatId, Chat.Summary.create(prompt), Set.of(Chat.Participant.create(userId)));
-                Message<ReplyChunk> message = Message.create(messageId, chatId, userId, Role.ANONYMOUS, Instant.now(), new ReplyChunk(prompt));
+                Message<ReplyChunk> message = Message.create(messageId, chatId, userId, role, Instant.now(), new ReplyChunk(prompt));
 
                 Mono<Void> saveAndLink = transactionalOperator.transactional(
                         chatSession.saveChat(chat)
-                                .then(saveAttachmentMessage(attachmentId, messageId, chatId, userId))
+                                .then(saveAttachmentMessage(attachmentId, messageId, chatId, userId, role))
                                 .then(chatSession.addMessage(message))
                                 .then()
                 );
@@ -93,7 +93,7 @@ public class ChatService {
         });
     }
 
-    public Mono<AddMessagePayload> addMessage(String userId, String chatId, String text, String attachmentId) {
+    public Mono<AddMessagePayload> addMessage(String userId, Role role, String chatId, String text, String attachmentId) {
         return Mono.deferContextual(contextView -> {
             String idempotencyKey = IdempotencyKeyContext.get(contextView);
             Mono<AddMessagePayload> operation =
@@ -102,9 +102,9 @@ public class ChatService {
 
                         Message<ReplyChunk> message =
                                 Message.create(
-                                        messageId, chatId, userId, Role.ANONYMOUS, Instant.now(), new ReplyChunk(text));
+                                        messageId, chatId, userId, role, Instant.now(), new ReplyChunk(text));
 
-                        return saveAttachmentMessage(attachmentId, messageId, chatId, userId)
+                        return saveAttachmentMessage(attachmentId, messageId, chatId, userId, role)
                                 .then(chatSession.addMessage(message))
                                 .thenReturn(AddMessagePayload.ack(chatId, message));
                     }).doOnSuccess(payload -> {
@@ -122,7 +122,7 @@ public class ChatService {
         });
     }
 
-    private Mono<Void> saveAttachmentMessage(String attachmentId, String messageId, String chatId, String userId) {
+    private Mono<Void> saveAttachmentMessage(String attachmentId, String messageId, String chatId, String userId, Role role) {
         if (attachmentId == null || attachmentId.isBlank()) {
             return Mono.empty();
         }
@@ -137,7 +137,7 @@ public class ChatService {
                             entity.getFileSize()
                     );
                     Message<AttachmentContent> attachmentMessage = Message.create(
-                            messageId + "-att", chatId, userId, Role.ANONYMOUS, Instant.now(), content
+                            messageId + "-att", chatId, userId, role, Instant.now(), content
                     );
                     return chatSession.addMessage(attachmentMessage)
                             .then(attachmentService.link(attId, uid))

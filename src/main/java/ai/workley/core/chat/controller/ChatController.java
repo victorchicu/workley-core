@@ -3,12 +3,15 @@ package ai.workley.core.chat.controller;
 import ai.workley.core.chat.model.ApplicationError;
 import ai.workley.core.chat.model.ErrorPayload;
 import ai.workley.core.chat.model.Payload;
+import ai.workley.core.chat.model.Role;
 import ai.workley.core.chat.service.ChatService;
 import ai.workley.core.idempotency.IdempotencyKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
@@ -49,7 +52,7 @@ public class ChatController {
     public Mono<ResponseEntity<Payload>> createChat(Principal principal, @RequestBody CreateChatRequest request) {
         return Mono.deferContextual(contextView -> {
             log.info("Create chat (principal={})", principal.getName());
-            return chatService.createChat(principal.getName(), request.prompt(), request.attachmentId())
+            return chatService.createChat(principal.getName(), resolveRole(principal), request.prompt(), request.attachmentId())
                     .map(payload -> ResponseEntity.ok()
                             .contentType(MediaType.APPLICATION_JSON)
                             .body((Payload) payload))
@@ -65,7 +68,7 @@ public class ChatController {
     public Mono<ResponseEntity<Payload>> addMessage(Principal principal, @PathVariable String chatId, @RequestBody AddMessageRequest request) {
         return Mono.deferContextual(contextView -> {
             log.info("Add message (principal={}, chatId={})", principal.getName(), chatId);
-            return chatService.addMessage(principal.getName(), chatId, request.text(), request.attachmentId())
+            return chatService.addMessage(principal.getName(), resolveRole(principal), chatId, request.text(), request.attachmentId())
                     .map(payload -> ResponseEntity.ok()
                             .contentType(MediaType.APPLICATION_JSON)
                             .body((Payload) payload))
@@ -74,5 +77,14 @@ public class ChatController {
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .body(new ErrorPayload(error.getMessage()))));
         });
+    }
+
+    private Role resolveRole(Principal principal) {
+        if (principal instanceof Authentication authentication) {
+            return authentication.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority).findFirst().map(Role::of)
+                    .orElse(Role.UNKNOWN);
+        }
+        return Role.UNKNOWN;
     }
 }

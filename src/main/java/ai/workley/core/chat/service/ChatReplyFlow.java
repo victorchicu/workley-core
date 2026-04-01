@@ -8,7 +8,10 @@ import ai.workley.core.chat.model.Content;
 import ai.workley.core.chat.model.ReplyChunk;
 import ai.workley.core.chat.model.ReplyError;
 import ai.workley.core.chat.model.ReplyCompletedContent;
+import ai.workley.core.chat.model.TokenUsage;
 import ai.workley.core.chat.repository.R2dbcAttachmentRepository;
+import ai.workley.core.chat.repository.R2dbcTokenUsageRepository;
+import ai.workley.core.chat.repository.TokenUsageEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -21,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Component
 public class ChatReplyFlow {
@@ -33,6 +37,7 @@ public class ChatReplyFlow {
     private final ReplyAggregator replyAggregator;
     private final ChatChunkEmitter chatChunkEmitter;
     private final R2dbcAttachmentRepository attachmentRepository;
+    private final R2dbcTokenUsageRepository tokenUsageRepository;
 
     public ChatReplyFlow(
             AiModel aiModel,
@@ -41,7 +46,8 @@ public class ChatReplyFlow {
             PromptBuilder promptBuilder,
             ReplyAggregator replyAggregator,
             ChatChunkEmitter chatChunkEmitter,
-            R2dbcAttachmentRepository attachmentRepository
+            R2dbcAttachmentRepository attachmentRepository,
+            R2dbcTokenUsageRepository tokenUsageRepository
     ) {
         this.aiModel = aiModel;
         this.chatSession = chatSession;
@@ -50,6 +56,7 @@ public class ChatReplyFlow {
         this.replyAggregator = replyAggregator;
         this.chatChunkEmitter = chatChunkEmitter;
         this.attachmentRepository = attachmentRepository;
+        this.tokenUsageRepository = tokenUsageRepository;
     }
 
     public Mono<Void> generate(String actor, String chatId, Message<? extends Content> message) {
@@ -92,10 +99,18 @@ public class ChatReplyFlow {
     private Mono<Void> streamReply(String actor, String chatId, Message<? extends Content> message,
                                     List<Message<? extends Content>> history) {
         final String replyId = UUID.randomUUID().toString();
+        final AtomicReference<TokenUsage> usageRef = new AtomicReference<>();
 
         Prompt prompt = promptBuilder.build(message, history);
 
         Flux<ReplyChunk> chunks = aiModel.stream(prompt)
+                .filter(event -> {
+                    if (event instanceof TokenUsage usage) {
+                        usageRef.set(usage);
+                        return false;
+                    }
+                    return true;
+                })
                 .map(chunkDecoder::decode)
                 .doOnNext(chunk ->
                         chatChunkEmitter.emit(
@@ -120,6 +135,24 @@ public class ChatReplyFlow {
                             replyId, chatId, actor, Role.ASSISTANT, Instant.now(), new ReplyChunk(fullReply));
                     return chatSession.addMessage(replyMessage);
                 })
+                .then(Mono.defer(() -> saveTokenUsage(replyId, chatId, usageRef.get())))
+                .then();
+    }
+
+    private Mono<Void> saveTokenUsage(String messageId, String chatId, TokenUsage usage) {
+        if (usage == null) {
+            return Mono.empty();
+        }
+        TokenUsageEntity entity = new TokenUsageEntity()
+                .setMessageId(messageId)
+                .setChatId(chatId)
+                .setModel(usage.model())
+                .setPromptTokens(usage.promptTokens())
+                .setCompletionTokens(usage.completionTokens())
+                .setTotalTokens(usage.totalTokens());
+        return tokenUsageRepository.save(entity)
+                .doOnError(error -> log.error("Failed to save token usage (messageId={}, chatId={})", messageId, chatId, error))
+                .onErrorResume(error -> Mono.empty())
                 .then();
     }
 }
