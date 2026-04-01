@@ -68,7 +68,7 @@ public class GptAiModel implements AiModel {
 
     private Flux<ReplyEvent> internalStream(Prompt prompt) {
         return openAiChatModel.stream(prompt)
-                .timeout(Duration.ofSeconds(30))
+                .timeout(Duration.ofSeconds(120))
                 .flatMapIterable(resp -> {
                     List<Generation> gens = resp != null
                             ? resp.getResults()

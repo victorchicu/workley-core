@@ -10,6 +10,6 @@ import reactor.core.publisher.Sinks;
 public class RSocketConfiguration {
     @Bean
     Sinks.Many<Message<? extends Content>> chatSessionSink() {
-        return Sinks.many().multicast().onBackpressureBuffer(1024, false);
+        return Sinks.many().multicast().onBackpressureBuffer(8192, false);
     }
 }

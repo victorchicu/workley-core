@@ -26,7 +26,7 @@ spring:
         options:
           top-p: 0.9
           model: llama3.2:latest
-          max-tokens: 1000
+          max-tokens: 16384
           temperature: 0.8
       base-url: http://localhost:7869
     openai:
@@ -34,7 +34,7 @@ spring:
       chat:
         options:
           model: gpt-4o-mini
-          max-tokens: 1000
+          max-tokens: 16384
           temperature: 0.2
       embedding:
         options:

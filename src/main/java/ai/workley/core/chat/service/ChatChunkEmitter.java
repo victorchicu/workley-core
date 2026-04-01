@@ -18,9 +18,12 @@ public class ChatChunkEmitter {
     }
 
     public void emit(Message<?> message) {
-        Sinks.EmitResult result = chatSessionSink.tryEmitNext(message);
-        if (result.isFailure()) {
-            log.warn("ReplyChunk dropped (actor={}, chatId={}, reason={})", message.ownedBy(), message.chatId(), result);
-        }
+        chatSessionSink.emitNext(message, (signalType, emitResult) -> {
+            if (emitResult == Sinks.EmitResult.FAIL_NON_SERIALIZED) {
+                return true; // retry on concurrent emission
+            }
+            log.warn("ReplyChunk dropped (actor={}, chatId={}, reason={})", message.ownedBy(), message.chatId(), emitResult);
+            return false;
+        });
     }
 }
