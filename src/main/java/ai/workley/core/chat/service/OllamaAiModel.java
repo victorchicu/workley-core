@@ -23,7 +23,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Primary
 @Component
 public class OllamaAiModel implements AiModel {
 
