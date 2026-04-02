@@ -22,6 +22,11 @@ public class R2dbcMessageRepositoryAdapter implements MessageStore {
     }
 
     @Override
+    public Mono<Integer> updateReaction(String messageId, String reaction) {
+        return messageRepository.updateReaction(messageId, reaction);
+    }
+
+    @Override
     public Mono<Message<? extends Content>> save(Message<? extends Content> message) {
         MessageEntity entity = toMessageEntity(message);
         return messageRepository.save(entity)
@@ -40,6 +45,13 @@ public class R2dbcMessageRepositoryAdapter implements MessageStore {
                 .map(this::toMessage);
     }
 
+    @Override
+    public Mono<Message<? extends Content>> findByMessageId(String messageId) {
+        return messageRepository.findByMessageId(messageId)
+                .map(this::toMessage);
+    }
+
+
     private Message<? extends Content> toMessage(MessageEntity source) {
         try {
             Content content = objectMapper.readValue(source.getContent().asString(), Content.class);
@@ -49,7 +61,8 @@ public class R2dbcMessageRepositoryAdapter implements MessageStore {
                     source.getOwnedBy(),
                     Role.valueOf(source.getRole()),
                     source.getCreatedAt(),
-                    content
+                    content,
+                    source.getReaction()
             );
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to deserialize message content", e);
@@ -65,7 +78,8 @@ public class R2dbcMessageRepositoryAdapter implements MessageStore {
                     .setOwnedBy(source.ownedBy())
                     .setRole(source.role().name())
                     .setCreatedAt(source.createdAt())
-                    .setContent(Json.of(contentJson));
+                    .setContent(Json.of(contentJson))
+                    .setReaction(source.reaction());
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize message content", e);
         }

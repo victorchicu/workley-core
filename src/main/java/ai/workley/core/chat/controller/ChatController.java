@@ -34,6 +34,9 @@ public class ChatController {
     public record AddMessageRequest(String text, String attachmentId) {
     }
 
+    public record ReactToMessageRequest(String reaction) {
+    }
+
     @GetMapping("/{chatId}")
     public Mono<ResponseEntity<Payload>> getChat(Principal principal, @PathVariable String chatId) {
         log.info("Get chat (principal={}, chatId={})", principal.getName(), chatId);
@@ -61,6 +64,22 @@ public class ChatController {
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .body(new ErrorPayload(error.getMessage()))));
         });
+    }
+
+    @PatchMapping("/{chatId}/messages/{messageId}/reaction")
+    public Mono<ResponseEntity<Object>> addReaction(Principal principal, @PathVariable String chatId, @PathVariable String messageId, @RequestBody ReactToMessageRequest request) {
+        log.info("React to message (principal={}, chatId={}, messageId={}, reaction={})",
+                principal.getName(), chatId, messageId, request.reaction());
+        return chatService.addReaction(principal.getName(), chatId, messageId, request.reaction())
+                .map(newReaction ->
+                        ResponseEntity.ok()
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body((Object) java.util.Map.of("reaction", newReaction))
+                )
+                .onErrorResume(ApplicationError.class, error ->
+                        Mono.just(ResponseEntity.badRequest()
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .body(new ErrorPayload(error.getMessage()))));
     }
 
     @PostMapping("/{chatId}/messages")

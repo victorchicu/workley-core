@@ -21,6 +21,7 @@ public class MessageEntity {
     @Column("owned_by")
     private String ownedBy;
     private Json content;
+    private String reaction;
     @CreatedDate
     @Column("created_at")
     private Instant createdAt;
@@ -76,6 +77,15 @@ public class MessageEntity {
 
     public MessageEntity setContent(Json content) {
         this.content = content;
+        return this;
+    }
+
+    public String getReaction() {
+        return reaction;
+    }
+
+    public MessageEntity setReaction(String reaction) {
+        this.reaction = reaction;
         return this;
     }
 

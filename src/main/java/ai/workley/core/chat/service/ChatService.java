@@ -9,6 +9,7 @@ import ai.workley.core.chat.model.CreateChatPayload;
 import ai.workley.core.chat.model.AddMessagePayload;
 import ai.workley.core.chat.model.GetChatPayload;
 import ai.workley.core.chat.model.ApplicationError;
+import ai.workley.core.chat.model.Reaction;
 import ai.workley.core.chat.model.Payload;
 import ai.workley.core.idempotency.IdempotencyGuard;
 import ai.workley.core.idempotency.IdempotencyKeyContext;
@@ -48,6 +49,27 @@ public class ChatService {
         this.idempotencyGuard = idempotencyGuard;
         this.attachmentService = attachmentService;
         this.transactionalOperator = transactionalOperator;
+    }
+
+    public Mono<String> addReaction(String actor, String chatId, String messageId, String reaction) {
+        Reaction parsed = Reaction.of(reaction);
+        if (reaction != null && parsed == null) {
+            return Mono.error(new ApplicationError("Invalid reaction."));
+        }
+        return chatSession.findChat(chatId, Set.of(actor))
+                .switchIfEmpty(Mono.error(new ApplicationError("Oops. Chat not found.")))
+                .then(chatSession.findMessage(messageId))
+                .switchIfEmpty(Mono.error(new ApplicationError("Message not found.")))
+                .flatMap(message -> {
+                    if (!chatId.equals(message.chatId())) {
+                        return Mono.error(new ApplicationError("Message not found."));
+                    }
+                    String newReaction = reaction != null && reaction.equals(message.reaction())
+                            ? null
+                            : reaction;
+                    return chatSession.updateReaction(messageId, newReaction)
+                            .thenReturn(newReaction != null ? newReaction : "");
+                });
     }
 
     public Mono<GetChatPayload> getChat(String actor, String chatId) {

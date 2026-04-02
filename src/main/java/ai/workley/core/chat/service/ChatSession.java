@@ -27,8 +27,16 @@ public class ChatSession {
         return chatStore.findChat(id, participants);
     }
 
+    public Mono<Integer> updateReaction(String messageId, String reaction) {
+        return messageStore.updateReaction(messageId, reaction);
+    }
+
     public Mono<Message<? extends Content>> addMessage(Message<? extends Content> message) {
         return messageStore.save(message);
+    }
+
+    public Mono<Message<? extends Content>> findMessage(String messageId) {
+        return messageStore.findByMessageId(messageId);
     }
 
     public Flux<Message<? extends Content>> loadAllHistory(String chatId) {

@@ -45,6 +45,7 @@ CREATE TABLE chat_messages
     role       VARCHAR(50)  NOT NULL,
     owned_by   VARCHAR(100) NOT NULL,
     content    JSONB        NOT NULL,
+    reaction   VARCHAR(10),
     created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
